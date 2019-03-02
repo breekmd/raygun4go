@@ -59,6 +59,7 @@ type Client struct {
 	silent       bool               // if true, the error is printed instead of sent to Raygun
 	logToStdOut  bool               // if true, the client will print debug messages
 	asynchronous bool               // if true, reports are sent to Raygun from a new go routine
+	poster 		 Poster				//can be changed the post behavior (useful for GAE)
 }
 
 // contextInformation holds optional information on the context the error
@@ -89,7 +90,20 @@ func New(appName, apiKey string) (c *Client, err error) {
 	if appName == "" || apiKey == "" {
 		return nil, errors.New("appName and apiKey are required")
 	}
-	c = &Client{appName, apiKey, context, false, false, false}
+	c = &Client{appName, apiKey, context, false, false, false,
+		DefaultPoster{}}
+	return c, nil
+}
+
+// New creates and returns a Client, needing an appName and an apiKey. It also
+// creates a unique identifier for your program.
+func NewWithCustomPoster(appName, apiKey string, poster Poster) (c *Client, err error) {
+	context := contextInformation{identifier: uuid.New()}
+	if appName == "" || apiKey == "" {
+		return nil, errors.New("appName and apiKey are required")
+	}
+	c = &Client{appName, apiKey, context, false, false, false,
+		poster}
 	return c, nil
 }
 
@@ -110,6 +124,7 @@ func (c *Client) Clone() *Client {
 		silent: c.silent,
 		logToStdOut: c.logToStdOut,
 		asynchronous: c.asynchronous,
+		poster: c.poster,
 	}
 	return clientClone
 }
@@ -256,14 +271,11 @@ func (c *Client) submitCore(post postData) error {
 		return errors.New(errMsg)
 	}
 
-	r, err := http.NewRequest("POST", raygunEndpoint+"/entries", bytes.NewBuffer(json))
-	if err != nil {
-		errMsg := fmt.Sprintf("Unable to create request (%s)", err.Error())
-		return errors.New(errMsg)
+	headers := &map[string]string{
+		"X-ApiKey" : c.apiKey,
 	}
-	r.Header.Add("X-ApiKey", c.apiKey)
-	httpClient := http.Client{}
-	resp, err := httpClient.Do(r)
+
+	resp, err := c.poster.Post(raygunEndpoint+"/entries", "application/json", bytes.NewBuffer(json), headers)
 
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to request (%s)", err.Error())
