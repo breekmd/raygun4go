@@ -60,6 +60,7 @@ type Client struct {
 	logToStdOut  bool               // if true, the client will print debug messages
 	asynchronous bool               // if true, reports are sent to Raygun from a new go routine
 	poster 		 Poster				//can be changed the post behavior (useful for GAE)
+	rethrow		 bool				//if true, the error is rethrown after recover - i.e for webrequests to send back errors instead of OK
 }
 
 // contextInformation holds optional information on the context the error
@@ -91,7 +92,7 @@ func New(appName, apiKey string) (c *Client, err error) {
 		return nil, errors.New("appName and apiKey are required")
 	}
 	c = &Client{appName, apiKey, context, false, false, false,
-		DefaultPoster{}}
+		DefaultPoster{}, false}
 	return c, nil
 }
 
@@ -103,7 +104,7 @@ func NewWithCustomPoster(appName, apiKey string, poster Poster) (c *Client, err 
 		return nil, errors.New("appName and apiKey are required")
 	}
 	c = &Client{appName, apiKey, context, false, false, false,
-		poster}
+		poster, false}
 	return c, nil
 }
 
@@ -148,6 +149,13 @@ func (c *Client) LogToStdOut(l bool) *Client {
 // The default is false.
 func (c *Client) Asynchronous(a bool) *Client {
 	c.asynchronous = a
+	return c
+}
+
+// Sets whether or not the error should be rethrown
+// The default is false.
+func (c *Client) Rethrow(r bool) *Client {
+	c.rethrow = r
 	return c
 }
 
@@ -213,6 +221,11 @@ func (c *Client) HandleError() error {
 	if c.logToStdOut && err != nil {
 		log.Println(err.Error())
 	}
+
+	if c.rethrow{
+		panic(err)
+	}
+
 	return err
 }
 
